@@ -1,0 +1,1 @@
+function resizeCarts(){let e=document.querySelector("header"),t=document.documentElement,r=(window.innerHeight-e.offsetHeight-6*GAP)/5;t.style.setProperty("--cart-h",`${r}px`)}window.addEventListener("resize",resizeCarts);
