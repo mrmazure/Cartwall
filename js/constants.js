@@ -1,1 +1,0 @@
-const NB_CARTS=25,FADE_MS=500,GAP=8,SWATCHES=["#2e2e2e","#4a148c","#6a1b9a","#283593","#1565c0","#00695c","#2e7d32","#ef6c00","#bf360c","#455a64"];function formatTime($){return isFinite($)?`${Math.floor($/60)}:${Math.floor($%60).toString().padStart(2,"0")}`:"--:--"}
