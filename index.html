@@ -1,1 +1,99 @@
-<!doctypehtml><html lang=fr><meta charset=UTF-8><meta content=https://cartwall.radiotools.be/seo_rtbe.png property=og:image><meta content=1280 property=og:image:width><meta content=720 property=og:image:height><meta content=summary_large_image name=twitter:card><meta content=https://cartwall.radiotools.be/seo_rtbe.png name=twitter:image><meta content="width=device-width,initial-scale=1"name=viewport><title>RadioTools – Cartwall By MrMazure</title><link href=favicon.png rel=icon><link href=style.css rel=stylesheet><header><img alt="RadioTools Logo"class=logo src=rt_logo_head.png><div class=title>RadioTools – Cartwall By MrMazure</div><nav class=controls><label class=switch><input id=mixMode type=checkbox><span class=slider></span><span class=lbl>Mix superposé</span></label><label class=switch><input id=secondModeCheckbox type=checkbox checked><span class=slider></span><span class=lbl>2ᵉ clic remise à zéro</span></label><button id=stopAll>STOP ALL</button><button id=clearAll>Palette vierge</button><button id=savePalette title="Sauvegarder la configuration">💾</button><button id=loadPalette title="Charger une configuration">📂</button><input id=paletteLoader type=file accept=.json hidden></nav><button id=menuToggle class=menu-toggle>⚙️</button></header><div id=grid></div><input id=filePicker type=file accept=audio/* hidden><div id=ctxMenu></div><script src=js/constants.js></script><script src=js/layout.js></script><script src=js/file-utils.js></script><script src=js/audio.js></script><script src=js/context-menu.js></script><script src=js/config.js></script><script src=js/main.js></script>
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta property="og:image" content="https://cartwall.radiotools.be/seo_rtbe.png" />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="720" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://cartwall.radiotools.be/seo_rtbe.png" />
+  <title>RadioTools – Cartwall By MrMazure</title>
+  <link rel="icon" href="favicon.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <header>
+    <img src="rt_logo_head.png" alt="RadioTools Logo" class="logo" />
+    <div class="title">RadioTools – Cartwall</div>
+
+    <button id="stopAll" class="btn-stop header-stop" title="Arrêter tous les sons">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 6h12v12H6z" />
+      </svg>
+      <span class="stop-label">STOP ALL</span>
+    </button>
+
+    <nav class="controls" id="controls">
+      <label class="switch">
+        <input type="checkbox" id="mixMode" />
+        <span class="slider"></span>
+        <span class="lbl">Mix superposé</span>
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" id="secondModeCheckbox" checked />
+        <span class="slider"></span>
+        <span class="lbl">2ᵉ clic remise à zéro</span>
+      </label>
+
+      <button id="clearAll" title="Vider la palette">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6" />
+        </svg>
+        <span>Palette vierge</span>
+      </button>
+      <button id="savePalette" title="Sauvegarder la configuration">💾 <span
+          class="btn-text">Sauvegarder</span></button>
+      <button id="loadPalette" title="Charger une configuration">📂 <span class="btn-text">Charger</span></button>
+      <button id="collabBtn" title="Mode Contrôle à distance">🤝 Contrôle à distance</button>
+    </nav>
+
+    <button id="menuToggle" class="menu-toggle" aria-label="Menu">☰</button>
+  </header>
+
+  <div id="grid"></div>
+
+  <!-- Hidden inputs -->
+  <input id="filePicker" type="file" accept="audio/*" hidden />
+  <input id="paletteLoader" type="file" accept=".json" hidden />
+
+  <!-- Context menu -->
+  <div id="ctxMenu"></div>
+
+
+  <!-- Collaboration Modal -->
+  <div id="collabOverlay" class="collab-overlay hidden">
+    <div class="collab-modal">
+      <button class="collab-close" id="collabClose">✕</button>
+      <h2>🤝 Mode Contrôle à distance</h2>
+
+      <!-- Host section (hidden for slave) -->
+      <div class="collab-section" id="hostSection">
+        <h3>Hôte (Master)</h3>
+        <p>Générez un lien de contrôle à distance.</p>
+        <button id="startHostBtn" class="btn-primary">🔴 Démarrer une session</button>
+        <div id="hostInfo" class="collab-info hidden">
+          <p>Session active — Room ID : <strong id="roomIdDisplay"></strong></p>
+          <div class="collab-link-row">
+            <input id="roomLink" type="text" readonly />
+            <button id="copyLinkBtn">📋 Copier</button>
+          </div>
+          <p class="collab-status">En attente de collaborateurs…<span id="peerCount"></span></p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- PeerJS -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <!-- App -->
+  <script src="js/app.js"></script>
+</body>
+
+</html>
