@@ -601,3 +601,110 @@ body.is-client .cart {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Shortcut / MIDI Badge ────────────────────────────────── */
+.shortcut-badge {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 55%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.shortcut-badge span {
+  display: block;
+  background: rgba(0, 0, 0, 0.62);
+  color: #d1d5db;
+  font-size: 0.60rem;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.5;
+}
+
+/* ── Key / MIDI Capture Overlay ───────────────────────────── */
+.key-capture-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.key-capture-box {
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 14px;
+  padding: 2rem 2.5rem;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  min-width: 280px;
+}
+
+.key-capture-msg {
+  font-size: 1rem;
+  color: var(--txt);
+  margin-bottom: 1.5rem;
+  animation: key-capture-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes key-capture-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.key-capture-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.key-capture-actions button {
+  padding: 0.4rem 1.1rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--txt);
+  transition: background 0.15s;
+}
+
+.key-capture-cancel {
+  background: #4b5563;
+}
+
+.key-capture-cancel:hover {
+  background: #6b7280;
+}
+
+.key-capture-clear {
+  background: var(--danger);
+}
+
+.key-capture-clear:hover {
+  background: var(--danger-hover);
+}
+
+/* Wider context menu to fit shortcut labels */
+#ctxMenu {
+  max-width: 290px;
+}

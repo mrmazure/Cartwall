@@ -153,6 +153,7 @@ function playPauseOrReset(cartEl) {
       audio.pause();
       audio.currentTime = 0;
       cartEl.classList.remove('playing', 'blinking');
+      restoreCartLED(cartEl);
       resetProgress(cartEl);
       // Broadcast final reset state so slave sees 0% and full duration
       const dur = audio.duration || 0;
@@ -162,6 +163,7 @@ function playPauseOrReset(cartEl) {
     fadeOut(audio, FADE_MS, () => {
       audio.pause();
       cartEl.classList.remove('playing', 'blinking');
+      restoreCartLED(cartEl);
     });
     broadcastCartAction(cartEl.dataset.idx, 'pause');
   }
@@ -182,6 +184,7 @@ function stopAllExcept(except) {
           resetProgress(c);
         }
         c.classList.remove('playing', 'blinking');
+        restoreCartLED(c);
       });
     }
   });
@@ -195,6 +198,7 @@ function stopAll() {
       c.audio.pause();
       c.audio.currentTime = 0;
       c.classList.remove('playing', 'blinking');
+      restoreCartLED(c);
       resetProgress(c);
       broadcastState(+c.dataset.idx, false, 0, dur ? formatTime(dur) : '', c.style.background || '');
     });
@@ -211,6 +215,7 @@ function trackProgress(cartEl) {
   const progEl = cartEl.querySelector('.progress');
   const timeEl = cartEl.querySelector('.time');
   let lastBroadcastMs = 0;
+  let ledBlinkState = null; // null=static, true=LED on, false=LED off
 
   function tick() {
     if (audio.paused) return;
@@ -221,7 +226,23 @@ function trackProgress(cartEl) {
       progEl.style.width = pct + '%';
       const timeText = '-' + formatTime(rem);
       timeEl.textContent = timeText;
-      cartEl.classList.toggle('blinking', rem <= 5);
+      const shouldBlink = rem <= 5;
+      cartEl.classList.toggle('blinking', shouldBlink);
+
+      // Mirror blink to Launchpad LED
+      if (cartEl.midiNote && midiOutput) {
+        if (shouldBlink) {
+          const blinkOn = Math.floor(Date.now() / 500) % 2 === 0;
+          if (blinkOn !== ledBlinkState) {
+            ledBlinkState = blinkOn;
+            if (blinkOn) setLaunchpadLED(cartEl.midiNote.note, cartEl.style.background || '#ffffff');
+            else clearLaunchpadLED(cartEl.midiNote.note);
+          }
+        } else if (ledBlinkState !== null) {
+          ledBlinkState = null;
+          setLaunchpadLED(cartEl.midiNote.note, cartEl.style.background || '#ffffff');
+        }
+      }
 
       // Broadcast at most every 100ms
       const now = Date.now();
@@ -239,6 +260,13 @@ function trackProgress(cartEl) {
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+}
+
+/** Restore a cart's Launchpad LED to its static assigned colour. */
+function restoreCartLED(cart) {
+  if (cart.midiNote && midiOutput) {
+    setLaunchpadLED(cart.midiNote.note, cart.style.background || '#ffffff');
+  }
 }
 
 /**
@@ -311,6 +339,9 @@ function clearCart(cartEl) {
 function clearAllFiles() {
   if (confirm('Confirmer la suppression de tous les fichiers et couleurs ?')) {
     document.querySelectorAll('.cart').forEach(clearCart);
+    if (typeof clearAllLaunchpadLEDs === 'function') {
+      clearAllLaunchpadLEDs();
+    }
   }
 }
 
@@ -334,6 +365,7 @@ function buildContextMenu(cartEl) {
       if (cartEl) {
         cartEl.style.background = hex;
         broadcastCartMeta(cartEl); // sync color change live
+        if (cartEl.midiNote) setLaunchpadLED(cartEl.midiNote.note, hex);
       }
       hideCtxMenu();
     };
@@ -368,7 +400,7 @@ function buildContextMenu(cartEl) {
 
   // Clear cart
   const btnClear = document.createElement('button');
-  btnClear.textContent = '🗑 Vider la cartouche';
+  btnClear.textContent = '❌ Vider la cartouche';
   btnClear.onclick = () => {
     if (cartEl) clearCart(cartEl);
     hideCtxMenu();
@@ -388,6 +420,29 @@ function buildContextMenu(cartEl) {
     hideCtxMenu();
   };
   menu.appendChild(btnLoop);
+
+  // ── Separator ────────────────────────────────────────────
+  const sep = document.createElement('hr');
+  sep.style.cssText = 'border:none;border-top:1px solid #374151;margin:4px 0;width:100%;';
+  menu.appendChild(sep);
+
+  // Keyboard shortcut assignment
+  const btnKey = document.createElement('button');
+  const scLabel = cartEl && cartEl.shortcut ? ` [${formatShortcut(cartEl.shortcut)}]` : '';
+  btnKey.textContent = `⌨️ Raccourci clavier…${scLabel}`;
+  if (cartEl && cartEl.shortcut) btnKey.classList.add('active');
+  btnKey.onclick = () => { hideCtxMenu(); if (cartEl) startKeyCapture(cartEl); };
+  menu.appendChild(btnKey);
+
+  // MIDI assignment
+  const btnMidi = document.createElement('button');
+  const mLabel = cartEl && cartEl.midiNote
+    ? ` [Ch${cartEl.midiNote.channel + 1} N${cartEl.midiNote.note}]`
+    : '';
+  btnMidi.textContent = `🎹 Commande MIDI…${mLabel}`;
+  if (cartEl && cartEl.midiNote) btnMidi.classList.add('active');
+  btnMidi.onclick = () => { hideCtxMenu(); if (cartEl) startMidiCapture(cartEl); };
+  menu.appendChild(btnMidi);
 }
 
 function showCtxMenu(x, y, cartEl) {
@@ -466,6 +521,8 @@ async function saveConfig() {
       background: c.style.background || '',
       label: c.querySelector('.label').textContent,
       loop: c.audio.loop,
+      shortcut: c.shortcut || null,
+      midiNote: c.midiNote || null,
       dataUrl,
     });
   }
@@ -504,12 +561,18 @@ function loadConfig(e) {
         }
         el.audio.loop = !!cfg.loop;
         el.classList.toggle('loop', !!cfg.loop);
+        if (cfg.shortcut) { el.shortcut = cfg.shortcut; } else { delete el.shortcut; }
+        if (cfg.midiNote) { el.midiNote = cfg.midiNote; } else { delete el.midiNote; }
+        updateShortcutBadge(el);
       }
+      if (data.some(cfg => cfg.midiNote) && !midiAccess) await initMidi();
+      updateAllLaunchpadLEDs();
     } catch {
       alert(`Fichier invalide — attendu un JSON de ${NB_CARTS} cartouches.`);
     }
   };
   reader.readAsText(file);
+  e.target.value = ''; // reset so the same file can be re-selected
 }
 
 /* =============================================================
@@ -825,6 +888,425 @@ function initCollaboration() {
 }
 
 /* =============================================================
+   9. KEYBOARD SHORTCUTS & MIDI
+   ============================================================= */
+
+// ── State ──────────────────────────────────────────────────────
+let midiAccess = null;
+let midiOutput = null;      // Detected Launchpad MIDI output
+let launchpadType = null;   // 'original' | 'mk2' | 'mk3'
+let capturingMidi = null;   // cartEl currently awaiting MIDI assignment
+
+// ── Shortcut helpers ───────────────────────────────────────────
+
+/**
+ * Format a stored shortcut object as a human-readable string.
+ * @param {{ key: string, ctrl: boolean, alt: boolean, shift: boolean }} sc
+ * @returns {string}
+ */
+function formatShortcut(sc) {
+  const parts = [];
+  if (sc.ctrl) parts.push('Ctrl');
+  if (sc.alt) parts.push('Alt');
+  if (sc.shift) parts.push('Shift');
+  const k = sc.key;
+  parts.push(k.length === 1 ? k.toUpperCase() : k);
+  return parts.join('+');
+}
+
+/**
+ * Create or update the shortcut/MIDI badge on a cart element.
+ * @param {HTMLElement} cartEl
+ */
+function updateShortcutBadge(cartEl) {
+  let badge = cartEl.querySelector('.shortcut-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.className = 'shortcut-badge';
+    cartEl.appendChild(badge);
+  }
+  badge.innerHTML = '';
+  if (cartEl.shortcut) {
+    const span = document.createElement('span');
+    span.textContent = `⌨ ${formatShortcut(cartEl.shortcut)}`;
+    badge.appendChild(span);
+  }
+  if (cartEl.midiNote) {
+    const span = document.createElement('span');
+    span.textContent = `🎹 N${cartEl.midiNote.note}`;
+    badge.appendChild(span);
+  }
+  badge.style.display = (cartEl.shortcut || cartEl.midiNote) ? '' : 'none';
+}
+
+/**
+ * Build and show a key/MIDI capture overlay modal.
+ * @param {string}   message  Text shown in the modal
+ * @param {Function} onCancel Called when user clicks Annuler
+ * @param {Function} onClear  Called when user clicks Effacer
+ * @returns {HTMLElement}     The overlay element (already appended to body)
+ */
+function createCaptureOverlay(message, onCancel, onClear) {
+  document.querySelector('.key-capture-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'key-capture-overlay';
+  overlay.innerHTML = `
+    <div class="key-capture-box">
+      <p class="key-capture-msg">${message}</p>
+      <div class="key-capture-actions">
+        <button class="key-capture-clear">Effacer</button>
+        <button class="key-capture-cancel">Annuler</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('.key-capture-cancel').onclick = () => { onCancel(); overlay.remove(); };
+  overlay.querySelector('.key-capture-clear').onclick = () => { onClear(); overlay.remove(); };
+  return overlay;
+}
+
+// ── Keyboard Capture ───────────────────────────────────────────
+
+/**
+ * Open a key-capture overlay and assign the pressed key to a cart.
+ * @param {HTMLElement} cartEl
+ */
+function startKeyCapture(cartEl) {
+  const overlay = createCaptureOverlay(
+    '⌨️ Appuyez sur une touche…',
+    () => document.removeEventListener('keydown', capture, true),
+    () => {
+      document.removeEventListener('keydown', capture, true);
+      delete cartEl.shortcut;
+      updateShortcutBadge(cartEl);
+    }
+  );
+
+  function capture(e) {
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key !== 'Escape') {
+      cartEl.shortcut = {
+        key: e.key,
+        code: e.code,
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+      };
+      updateShortcutBadge(cartEl);
+    }
+    document.removeEventListener('keydown', capture, true);
+    overlay.remove();
+  }
+  document.addEventListener('keydown', capture, true);
+}
+
+// ── Global keyboard trigger ────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea, select')) return;
+  if (document.querySelector('.key-capture-overlay')) return;
+  document.querySelectorAll('.cart').forEach(cart => {
+    const sc = cart.shortcut;
+    if (!sc) return;
+    if (
+      sc.code === e.code &&
+      sc.ctrl === e.ctrlKey &&
+      sc.alt === e.altKey &&
+      sc.shift === e.shiftKey
+    ) {
+      e.preventDefault();
+      if (isClient) {
+        if (hostConn && hostConn.open) hostConn.send({ type: 'cartClick', idx: +cart.dataset.idx });
+      } else if (cart.audio.src) {
+        playPauseOrReset(cart);
+      }
+    }
+  });
+});
+
+// ── MIDI Engine ────────────────────────────────────────────────
+
+/**
+ * Initialize the Web MIDI API and detect connected devices.
+ * @returns {Promise<void>}
+ */
+async function initMidi() {
+  if (!navigator.requestMIDIAccess) {
+    console.info('[MIDI] Web MIDI API non disponible sur ce navigateur.');
+    return;
+  }
+  try {
+    midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+    midiAccess.inputs.forEach(inp => { inp.onmidimessage = onMidiMessage; });
+    midiAccess.onstatechange = async () => {
+      midiAccess.inputs.forEach(inp => { inp.onmidimessage = onMidiMessage; });
+      await detectLaunchpad();
+      updateAllLaunchpadLEDs();
+    };
+    await detectLaunchpad();
+    updateAllLaunchpadLEDs();
+  } catch (err) {
+    console.warn('[MIDI] Accès refusé :', err);
+  }
+}
+
+/** Return true if the MIDI output name looks like a Novation Launchpad. */
+function isLaunchpadOutput(name) {
+  const n = name.toLowerCase();
+  return n.includes('launchpad') || n.includes('lpminimk3') || n.includes('lpmk2') ||
+    n.includes('lpmk3') || n.includes('lpx ') || n.includes('lpprox');
+}
+
+/** Scan MIDI outputs to find a Launchpad device and classify its generation. */
+async function detectLaunchpad() {
+  midiOutput = null;
+  launchpadType = null;
+
+  // Log all outputs to help diagnose detection issues
+  console.info('[MIDI] Sorties MIDI disponibles :',
+    [...midiAccess.outputs.values()].map(o => o.name));
+
+  // Prefer Port 1 (first matching output) — SysEx LED commands must go to Port 1
+  midiAccess.outputs.forEach(out => {
+    if (isLaunchpadOutput(out.name) && !midiOutput) midiOutput = out;
+  });
+  if (!midiOutput) return;
+
+  const n = midiOutput.name.toLowerCase();
+  if (n.includes('mk2') || n.includes('lpmk2')) {
+    launchpadType = 'mk2';
+  } else if (n.includes('mk3') || n.includes('lpminimk3') || n.includes('lpmk3') ||
+    n.includes('launchpad x') || n.includes('lpx ') || n.includes('pro 3')) {
+    launchpadType = 'mk3';
+    enterProgrammerMode();
+    // Give the device ~100 ms to switch to Programmer Mode before sending LEDs
+    await new Promise(r => setTimeout(r, 100));
+  } else {
+    launchpadType = 'original'; // Launchpad S, Mini 1st gen, original
+  }
+  console.info(`[MIDI] Launchpad détecté : "${midiOutput.name}" (type: ${launchpadType})`);
+
+  // Clear all LEDs initially
+  clearAllLaunchpadLEDs();
+}
+
+/**
+ * Send "Enter Programmer Mode" SysEx to Launchpad MK3 family.
+ * Two methods sent back-to-back for firmware compatibility:
+ *   - Mode Select (0x0E 0x01): standard MK3/X/Pro Programmer Mode
+ *   - Layout Select 0x7F: some Mini MK3 firmware versions need this
+ */
+function enterProgrammerMode() {
+  const prod = getLaunchpadProductByte();
+  if (!prod || !midiOutput) return;
+  try {
+    midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, prod, 0x0E, 0x01, 0xF7]);
+    midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, prod, 0x00, 0x7F, 0xF7]);
+    // Send Clear all LEDs SysEx for MK3 (just in case)
+    midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, prod, 0x02, 0x00, 0xF7]);
+    console.info('[MIDI] Launchpad MK3 — Programmer Mode activé');
+  } catch (err) {
+    console.warn('[MIDI] Erreur activation Programmer Mode :', err);
+  }
+}
+
+/**
+ * Handle an incoming MIDI message — either capture or trigger.
+ * @param {MIDIMessageEvent} event
+ */
+function onMidiMessage(event) {
+  const [status, note, velocity] = event.data;
+  const cmd = status & 0xF0;
+  const channel = status & 0x0F;
+
+  if (cmd !== 0x90 || velocity === 0) return; // Note On only
+
+  if (capturingMidi) {
+    const cartEl = capturingMidi;
+    capturingMidi = null;
+    cartEl.midiNote = { channel, note };
+    updateShortcutBadge(cartEl);
+    setLaunchpadLED(note, cartEl.style.background || '#ffffff');
+    document.querySelector('.key-capture-overlay')?.remove();
+    return;
+  }
+
+  document.querySelectorAll('.cart').forEach(cart => {
+    const m = cart.midiNote;
+    if (!m || m.note !== note || m.channel !== channel) return;
+    if (isClient) {
+      if (hostConn && hostConn.open) hostConn.send({ type: 'cartClick', idx: +cart.dataset.idx });
+    } else if (cart.audio.src) {
+      playPauseOrReset(cart);
+    }
+  });
+}
+
+// ── Launchpad LED Control ──────────────────────────────────────
+
+/**
+ * Return the SysEx product byte for the detected Launchpad model.
+ * @returns {number|null}
+ */
+function getLaunchpadProductByte() {
+  if (!midiOutput) return null;
+  const n = midiOutput.name.toLowerCase();
+  if (n.includes('mk2')) return 0x18; // MK2  (RGB 0-63)
+  if (n.includes('pro mk3') || n.includes('pro 3')) return 0x0E; // Pro MK3
+  if (n.includes('launchpad x')) return 0x0C; // Launchpad X
+  return 0x0D; // Mini MK3 / unknown MK3
+}
+
+/**
+ * Convert a CSS hex or rgb() colour string to { r, g, b } (0-255).
+ * @param {string} colorStr
+ * @returns {{ r: number, g: number, b: number }}
+ */
+function parseColor(colorStr) {
+  if (!colorStr) return { r: 255, g: 255, b: 255 };
+
+  // Try hex
+  const mHex = /#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})/i.exec(colorStr);
+  if (mHex) {
+    return { r: parseInt(mHex[1], 16), g: parseInt(mHex[2], 16), b: parseInt(mHex[3], 16) };
+  }
+
+  // Try rgb / rgba
+  const mRgb = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(colorStr);
+  if (mRgb) {
+    return { r: parseInt(mRgb[1], 10), g: parseInt(mRgb[2], 10), b: parseInt(mRgb[3], 10) };
+  }
+
+  return { r: 255, g: 255, b: 255 };
+}
+
+/**
+ * Set a Launchpad pad LED to match a hex or rgb colour.
+ * - Original / S / Mini 1st gen : Note On velocity (4-level R×G palette)
+ * - MK2                         : SysEx RGB 0-63
+ * - MK3 family                  : SysEx RGB 0-127 (requires Programmer Mode)
+ * @param {number} note      MIDI note number of the pad
+ * @param {string} colorStr  CSS color string (defaults to black/off)
+ */
+function setLaunchpadLED(note, colorStr) {
+  if (!midiOutput) return;
+
+  // Off state
+  if (!colorStr || colorStr === '#000000') {
+    clearLaunchpadLED(note);
+    return;
+  }
+
+  const { r, g, b } = parseColor(colorStr);
+  try {
+    if (launchpadType === 'original') {
+      // Launchpad Mini & Original - Velocity encoding: (green_0-3 << 4) | red_0-3 | flag
+      // 0-3 brightness steps
+      const r2 = Math.min(3, Math.round(r * 3 / 255));
+      const g2 = Math.min(3, Math.round(g * 3 / 255));
+      // Top 2 bits are clear/copy flags (0 = normal update), plus 12 to enable copy/clear flags
+      const velocity = (g2 << 4) | r2 | 12;
+      midiOutput.send([0x90, note, velocity]);
+    } else if (launchpadType === 'mk2') {
+      // Launchpad MK2 — RGB SysEx, values 0-63
+      midiOutput.send([
+        0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x0B,
+        note,
+        Math.round(r * 63 / 255),
+        Math.round(g * 63 / 255),
+        Math.round(b * 63 / 255),
+        0xF7,
+      ]);
+    } else {
+      // Launchpad MK3 family — RGB SysEx, values 0-127
+      // Type byte 0x03 = RGB (0x00 would be palette index, not colour)
+      const prod = getLaunchpadProductByte();
+      midiOutput.send([
+        0xF0, 0x00, 0x20, 0x29, 0x02, prod, 0x03, 0x03,
+        note,
+        Math.round(r * 127 / 255),
+        Math.round(g * 127 / 255),
+        Math.round(b * 127 / 255),
+        0xF7,
+      ]);
+    }
+  } catch (err) {
+    console.warn('[MIDI] Erreur LED :', err);
+  }
+}
+
+/** Turn off a Launchpad pad LED. */
+function clearLaunchpadLED(note) {
+  if (!midiOutput) return;
+  if (launchpadType === 'original') {
+    try { midiOutput.send([0x80, note, 0]); } catch (e) { /* ignore */ }
+  } else {
+    // For other launchpads we can send black
+    const blackStr = '#000000';
+    try {
+      if (launchpadType === 'mk2') {
+        midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x0B, note, 0, 0, 0, 0xF7]);
+      } else {
+        const prod = getLaunchpadProductByte();
+        midiOutput.send([0xF0, 0x00, 0x20, 0x29, 0x02, prod, 0x03, 0x03, note, 0, 0, 0, 0xF7]);
+      }
+    } catch (e) { /* ignore */ }
+  }
+}
+
+/** Force all 128 note LEDs off regardless of assignment. */
+function clearAllLaunchpadLEDs() {
+  if (!midiOutput) return;
+  for (let note = 0; note <= 127; note++) {
+    clearLaunchpadLED(note);
+  }
+}
+
+/** Refresh all Launchpad LEDs to match current cart colours. */
+function updateAllLaunchpadLEDs() {
+  document.querySelectorAll('.cart').forEach(cart => {
+    if (cart.midiNote) {
+      setLaunchpadLED(cart.midiNote.note, cart.style.background || '#ffffff');
+    }
+  });
+}
+
+// ── MIDI Capture ───────────────────────────────────────────────
+
+/**
+ * Open a MIDI-capture overlay and assign the next MIDI note to a cart.
+ * Initializes MIDI on first call if needed.
+ * @param {HTMLElement} cartEl
+ */
+async function startMidiCapture(cartEl) {
+  if (!midiAccess) {
+    await initMidi();
+    if (!midiAccess) {
+      alert('Accès MIDI non disponible.\nAutorisez l\'accès MIDI dans la barre d\'adresse.');
+      return;
+    }
+  }
+  // Re-assert Programmer Mode each time — device may have reset to User/Session layout
+  if (launchpadType === 'mk3') {
+    enterProgrammerMode();
+    await new Promise(r => setTimeout(r, 80));
+  }
+  createCaptureOverlay(
+    '🎹 Appuyez sur un pad ou bouton MIDI…',
+    () => { capturingMidi = null; },
+    () => {
+      capturingMidi = null;
+      if (cartEl.midiNote) {
+        clearLaunchpadLED(cartEl.midiNote.note);
+        delete cartEl.midiNote;
+        updateShortcutBadge(cartEl);
+      }
+    }
+  );
+  capturingMidi = cartEl;
+}
+
+/* =============================================================
    8. BOOTSTRAP / MAIN
    ============================================================= */
 
@@ -848,6 +1330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cart.audio.preload = 'auto';
     cart.audio.addEventListener('ended', () => {
       cart.classList.remove('playing', 'blinking');
+      restoreCartLED(cart);
       resetProgress(cart);
       const dur = cart.audio.duration || 0;
       const timeText = dur ? formatTime(dur) : '';
@@ -890,9 +1373,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let longPressTimer;
     cart.addEventListener('touchstart', () => {
       longPressTimer = setTimeout(() => showCtxMenuMobile(cart), 600);
-    });
+    }, { passive: true });
     ['touchend', 'touchmove', 'touchcancel'].forEach(ev =>
-      cart.addEventListener(ev, () => clearTimeout(longPressTimer))
+      cart.addEventListener(ev, () => clearTimeout(longPressTimer), { passive: true })
     );
 
     grid.appendChild(cart);
