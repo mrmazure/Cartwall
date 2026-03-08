@@ -308,6 +308,10 @@ function assignFile(cartEl, file) {
   if (cartEl.objectURL) URL.revokeObjectURL(cartEl.objectURL);
   cartEl.objectURL = URL.createObjectURL(file);
   cartEl.audio.src = cartEl.objectURL;
+  // Applique la sortie audio sélectionnée au nouvel élément
+  if (selectedOutputDeviceId && 'setSinkId' in HTMLAudioElement.prototype) {
+    cartEl.audio.setSinkId(selectedOutputDeviceId).catch(() => {});
+  }
   cartEl.audio.onloadedmetadata = () => {
     const name = file.name.replace(/\.[^.]+$/, ''); // strip extension
     cartEl.querySelector('.label').textContent = name;
@@ -1307,7 +1311,172 @@ async function startMidiCapture(cartEl) {
 }
 
 /* =============================================================
-   8. BOOTSTRAP / MAIN
+   8. AUDIO OUTPUT DEVICE SELECTION
+   ============================================================= */
+
+/** DeviceId de la sortie audio master (persisté en localStorage) */
+let selectedOutputDeviceId = localStorage.getItem('audioOutputDeviceId') || 'default';
+/** Label mémorisé du device sélectionné */
+let selectedOutputLabel = localStorage.getItem('audioOutputLabel') || '';
+
+/**
+ * Énumère les périphériques de sortie audio (sans demande de permission).
+ * @returns {Promise<MediaDeviceInfo[]>}
+ */
+async function enumerateOutputs() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return [];
+  const all = await navigator.mediaDevices.enumerateDevices();
+  return all.filter(d => d.kind === 'audiooutput');
+}
+
+/**
+ * Applique un périphérique de sortie à tous les éléments audio des carts.
+ * @param {string} deviceId
+ * @param {string} [label]
+ */
+async function applyOutputDevice(deviceId, label) {
+  if (!('setSinkId' in HTMLAudioElement.prototype)) return;
+  selectedOutputDeviceId = deviceId;
+  selectedOutputLabel = label || '';
+  localStorage.setItem('audioOutputDeviceId', deviceId);
+  localStorage.setItem('audioOutputLabel', selectedOutputLabel);
+  const promises = [];
+  document.querySelectorAll('.cart').forEach(cart => {
+    if (cart.audio) promises.push(cart.audio.setSinkId(deviceId).catch(() => {}));
+  });
+  await Promise.all(promises);
+  // Met à jour le libellé du bouton
+  const btn = document.getElementById('audioOutputBtn');
+  if (btn) {
+    const short = selectedOutputLabel
+      ? selectedOutputLabel.replace(/\s*\(.*\)\s*$/, '').trim() // supprime la partie entre parenthèses
+      : '';
+    btn.title = selectedOutputLabel || 'Choisir la carte son de sortie du master';
+    btn.innerHTML = short ? `🔊 ${short}` : '🔊 Carte son de sortie';
+  }
+}
+
+/**
+ * Remplit (ou recharge) le contenu du panel avec la liste des périphériques de SORTIE.
+ * N'utilise jamais getUserMedia (entrée micro) — uniquement les API de sortie audio.
+ * @param {HTMLElement} panel
+ * @param {HTMLElement} anchorBtn
+ */
+async function populateAudioOutputPanel(panel, anchorBtn) {
+  panel.innerHTML = '<div class="aop-msg">Détection des cartes son…</div>';
+
+  const outputs = await enumerateOutputs();
+  panel.innerHTML = '';
+
+  // Classify outputs
+  const defaultDev = outputs.find(d => d.deviceId === 'default');
+  const commDev = outputs.find(d => d.deviceId === 'communications');
+  const others = outputs.filter(d => d.deviceId !== 'default' && d.deviceId !== 'communications');
+  const hasUnlabelled = others.some(d => !d.label);
+
+  // Build ordered list — show ALL devices; use generic fallback name if label is empty
+  const list = [
+    { deviceId: 'default', label: defaultDev?.label || 'Sortie par défaut du système' },
+  ];
+  let unnamed = 0;
+  others.forEach(d => {
+    unnamed++;
+    list.push({ deviceId: d.deviceId, label: d.label || `Sortie audio ${unnamed}` });
+  });
+  if (commDev) list.push({ deviceId: 'communications', label: commDev.label || 'Sortie de communication' });
+
+  list.forEach(dev => {
+    const active = dev.deviceId === selectedOutputDeviceId;
+    const item = document.createElement('div');
+    item.className = 'aop-item' + (active ? ' aop-active' : '');
+    item.title = dev.label;
+    item.innerHTML = `<span class="aop-check">${active ? '✓' : ''}</span><span class="aop-label">${dev.label}</span>`;
+    item.addEventListener('click', async () => {
+      await applyOutputDevice(dev.deviceId, dev.label);
+      panel.remove();
+    });
+    panel.appendChild(item);
+  });
+
+  const sep = document.createElement('div');
+  sep.className = 'aop-sep';
+  panel.appendChild(sep);
+
+  if (navigator.mediaDevices && typeof navigator.mediaDevices.selectAudioOutput === 'function') {
+    // Firefox / navigateur avec selectAudioOutput natif
+    const btnBrowse = document.createElement('div');
+    btnBrowse.className = 'aop-item aop-unlock';
+    btnBrowse.innerHTML = '<span class="aop-check">🔊</span><span class="aop-label">Parcourir les cartes son de sortie…</span>';
+    btnBrowse.title = 'Ouvre le sélecteur natif du navigateur';
+    btnBrowse.addEventListener('click', async e => {
+      e.stopPropagation();
+      try {
+        const device = await navigator.mediaDevices.selectAudioOutput();
+        await applyOutputDevice(device.deviceId, device.label);
+        panel.remove();
+        openAudioOutputPanel(anchorBtn);
+      } catch (_) { /* annulé */ }
+    });
+    panel.appendChild(btnBrowse);
+  } else if (hasUnlabelled && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    // Chrome : technique getUserMedia pour révéler les noms (même méthode que Jitsi Meet)
+    // Le stream est coupé immédiatement — le micro n'est pas utilisé pour la lecture
+    const btnUnlock = document.createElement('div');
+    btnUnlock.className = 'aop-item aop-unlock';
+    btnUnlock.innerHTML = '<span class="aop-check">🔓</span><span class="aop-label">Autoriser pour voir les autres carte son</span>';
+    btnUnlock.title = 'Requiert une autorisation momentanée — le micro ne sera pas utilisé';
+    btnUnlock.addEventListener('click', async e => {
+      e.stopPropagation();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        stream.getTracks().forEach(t => t.stop()); // libère le micro immédiatement
+        panel.remove();
+        openAudioOutputPanel(anchorBtn); // ré-ouvre avec les vrais noms
+      } catch (_) {
+        const errNote = document.createElement('div');
+        errNote.className = 'aop-msg';
+        errNote.textContent = '⚠ Permission refusée — impossible d\'afficher les vrais noms.';
+        btnUnlock.replaceWith(errNote);
+      }
+    });
+    panel.appendChild(btnUnlock);
+  }
+}
+
+/**
+ * Ouvre (ou ferme) le panel de sélection de carte son sous le bouton donné.
+ * @param {HTMLElement} anchorBtn
+ */
+async function openAudioOutputPanel(anchorBtn) {
+  const existing = document.getElementById('audioOutputPanel');
+  if (existing) { existing.remove(); return; }
+
+  const panel = document.createElement('div');
+  panel.id = 'audioOutputPanel';
+  panel.className = 'audio-output-panel';
+  document.body.appendChild(panel);
+
+  // Positionnement sous le bouton
+  const rect = anchorBtn.getBoundingClientRect();
+  panel.style.top = (rect.bottom + 6) + 'px';
+  panel.style.right = (window.innerWidth - rect.right) + 'px';
+
+  await populateAudioOutputPanel(panel, anchorBtn);
+
+  // Fermeture au clic extérieur
+  setTimeout(() => {
+    document.addEventListener('click', function outsideClick(e) {
+      if (!panel.isConnected) { document.removeEventListener('click', outsideClick); return; }
+      if (!panel.contains(e.target) && e.target !== anchorBtn) {
+        panel.remove();
+        document.removeEventListener('click', outsideClick);
+      }
+    });
+  }, 0);
+}
+
+/* =============================================================
+   9. BOOTSTRAP / MAIN
    ============================================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1398,6 +1567,21 @@ document.addEventListener('DOMContentLoaded', () => {
       controls.classList.remove('open');
     }
   });
+
+  /* ── Audio output device selection ───────────────────── */
+  const audioOutputBtn = document.getElementById('audioOutputBtn');
+  if (audioOutputBtn) {
+    // Restaure le libellé mémorisé
+    if (selectedOutputLabel) {
+      const short = selectedOutputLabel.replace(/\s*\(.*\)\s*$/, '').trim();
+      audioOutputBtn.innerHTML = short ? `🔊 ${short}` : '🔊 Carte son de sortie';
+      audioOutputBtn.title = selectedOutputLabel;
+    }
+    audioOutputBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      openAudioOutputPanel(audioOutputBtn);
+    });
+  }
 
   /* ── 2nd-click mode: reset all paused-mid-play carts ─── */
   document.getElementById('secondModeCheckbox').addEventListener('change', function () {
