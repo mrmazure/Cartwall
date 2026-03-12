@@ -656,7 +656,7 @@ body.is-client .cart {
   }
 
   .more-menu-btn {
-    display: none;
+    display: none !important;
   }
 
   .more-dropdown {
