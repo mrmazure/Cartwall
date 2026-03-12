@@ -1,0 +1,17 @@
+{
+  "name": "RadioTools – Cartwall",
+  "short_name": "Cartwall",
+  "description": "Cartoucheur audio pour la radio",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1c1c20",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

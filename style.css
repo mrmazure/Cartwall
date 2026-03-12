@@ -3,29 +3,33 @@
    ============================================================ */
 
 :root {
-  --bg-page: #09090b;
-  --bg-header: #1f2937;
-  --bg-cart: #374151;
-  --bg-cart-hover: #3d4a5c;
-  --bg-ctx: #1f2937;
+  --bg-page: #1c1c20;
+  --bg-header: #1c1c20;
+  --bg-panel: #26262b;
+  --bg-cart: #303037;
+  --bg-cart-hover: #3a3a42;
+  --bg-ctx: #26262b;
 
-  --txt: #f3f4f6;
-  --txt-muted: #9ca3af;
-  --txt-empty: #6b7280;
+  --txt: #fafafa;
+  --txt-muted: #a1a1aa;
+  --txt-empty: #71717a;
 
-  --accent: #494fd6;
-  --accent-hover: #3b3fc4;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
   --danger: #ef4444;
   --danger-hover: #dc2626;
   --warn: #f59e0b;
   --info: #3b82f6;
+  --success: #22c55e;
 
+  --border: #3d3d45;
   --progress-h: 6px;
   --border-r: 8px;
+  --radius-sm: 4px;
   --cart-h: 120px;
   --gap: 10px;
 
-  font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   color: var(--txt);
 }
 
@@ -48,30 +52,43 @@ body {
 
 /* ── Header ───────────────────────────────────────────────── */
 header {
+  height: 60px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.5rem 1rem;
+  padding: 0 1.5rem;
   background: var(--bg-header);
-  border-bottom: 1px solid #374151;
+  border-bottom: 1px solid var(--border);
   position: relative;
   z-index: 100;
   flex-shrink: 0;
   overflow: visible;
 }
 
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .logo {
-  width: 30px;
-  height: 30px;
+  height: 32px;
+  width: auto;
   object-fit: contain;
 }
 
 .title {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.02em;
   color: var(--txt);
   white-space: nowrap;
+}
+
+.subtitle {
+  font-weight: 400;
+  color: var(--txt-muted);
+  font-size: 0.9rem;
 }
 
 /* ── Nav Controls ─────────────────────────────────────────── */
@@ -89,14 +106,25 @@ header {
 }
 
 .controls button {
-  padding: 0.35rem 0.75rem;
-  border: none;
-  border-radius: var(--border-r);
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.82rem;
-  font-weight: 500;
-  transition: background 0.18s ease, transform 0.1s ease;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  transition: all 0.2s;
   color: var(--txt);
+  background: var(--bg-cart);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.controls button:hover {
+  background: var(--bg-cart-hover);
+  border-color: var(--txt-muted);
 }
 
 .controls button:active {
@@ -106,23 +134,24 @@ header {
 .controls button svg,
 .btn-stop svg {
   vertical-align: middle;
-  margin-top: -2px;
-  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .btn-stop {
-  padding: 0.35rem 0.75rem;
-  border: none;
-  border-radius: var(--border-r);
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.82rem;
-  font-weight: 500;
-  transition: background 0.18s ease, transform 0.1s ease;
-  color: var(--txt);
-  background: var(--accent);
+  font-weight: 600;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  transition: all 0.2s;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 6px;
 }
 
 .btn-stop:active {
@@ -130,7 +159,8 @@ header {
 }
 
 .btn-stop:hover {
-  background: var(--accent-hover);
+  background: rgba(239, 68, 68, 0.2);
+  border-color: var(--danger);
 }
 
 .btn-stop span,
@@ -140,29 +170,60 @@ header {
 
 
 #clearAll {
-  background: var(--danger);
+  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
 }
 
 #clearAll:hover {
-  background: var(--danger-hover);
+  background: rgba(239, 68, 68, 0.2);
 }
 
-#savePalette,
-#loadPalette {
-  background: #4b5563;
+/* ── More Menu Dropdown ───────────────────────────────────── */
+.more-menu {
+  position: relative;
+  flex-shrink: 0;
 }
 
-#savePalette:hover,
-#loadPalette:hover {
-  background: #6b7280;
+.more-menu-btn {
+  /* inherits .controls button */
 }
 
-#collabBtn {
-  background: #4338ca;
+.more-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--border-r);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  min-width: 210px;
+  padding: 4px;
+  z-index: 300;
+  gap: 2px;
 }
 
-#collabBtn:hover {
-  background: #3730a3;
+.more-dropdown.open {
+  display: flex;
+}
+
+.more-dropdown button {
+  width: 100% !important;
+  height: auto !important;
+  padding: 9px 14px !important;
+  border-radius: var(--radius-sm) !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--txt) !important;
+  justify-content: flex-start !important;
+  font-weight: 500 !important;
+}
+
+.more-dropdown button:hover {
+  background: var(--bg-cart-hover) !important;
+  border-color: transparent !important;
 }
 
 .btn-text {
@@ -186,7 +247,7 @@ header {
 .switch .slider {
   width: 36px;
   height: 20px;
-  background: #4b5563;
+  background: var(--border);
   border-radius: 20px;
   position: relative;
   transition: background 0.22s ease;
@@ -331,12 +392,12 @@ header {
   gap: 0.4rem;
   padding: 0.75rem;
   background: var(--bg-ctx);
-  border: 1px solid #374151;
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--border-r);
   z-index: 1000;
   width: auto;
   max-width: 260px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 
 .swatch {
@@ -358,25 +419,29 @@ header {
   width: 100%;
   padding: 0.45rem 0.6rem;
   margin-top: 0.2rem;
-  background: #374151;
-  border: 1px solid #4b5563;
-  border-radius: 6px;
+  background: var(--bg-cart);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--txt);
   cursor: pointer;
   font-size: 0.82rem;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-weight: 500;
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 #ctxMenu button:hover {
-  background: #4b5563;
+  background: var(--bg-cart-hover);
+  border-color: var(--txt-muted);
 }
 
 #ctxMenu button.active {
-  background: var(--accent);
+  background: rgba(99, 102, 241, 0.15);
   border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ── Collaboration Modal ──────────────────────────────────── */
@@ -396,8 +461,8 @@ header {
 }
 
 .collab-modal {
-  background: #1f2937;
-  border: 1px solid #374151;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 2rem;
   width: 90%;
@@ -416,8 +481,8 @@ header {
   position: absolute;
   top: 1rem;
   right: 1rem;
-  background: #374151;
-  border: none;
+  background: var(--bg-cart);
+  border: 1px solid var(--border);
   border-radius: 50%;
   color: var(--txt);
   width: 28px;
@@ -427,11 +492,12 @@ header {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  transition: all 0.15s;
 }
 
 .collab-close:hover {
-  background: #4b5563;
+  background: var(--bg-cart-hover);
+  border-color: var(--txt-muted);
 }
 
 .collab-section h3 {
@@ -448,16 +514,16 @@ header {
 }
 
 .collab-divider {
-  border-top: 1px solid #374151;
+  border-top: 1px solid var(--border);
   margin: 1.25rem 0;
 }
 
 .collab-info {
   margin-top: 0.75rem;
   padding: 0.75rem;
-  background: #111827;
+  background: var(--bg-page);
   border-radius: 8px;
-  border: 1px solid #374151;
+  border: 1px solid var(--border);
 }
 
 .collab-info.hidden {
@@ -472,11 +538,12 @@ header {
 
 .collab-link-row input {
   flex: 1;
-  background: #374151;
-  border: 1px solid #4b5563;
-  border-radius: 6px;
+  background: var(--bg-cart);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--txt);
   font-size: 0.78rem;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   padding: 0.4rem 0.6rem;
   outline: none;
 }
@@ -484,20 +551,21 @@ header {
 .collab-link-row button,
 .btn-primary {
   padding: 0.45rem 0.85rem;
-  background: #4338ca;
-  border: none;
-  border-radius: 8px;
-  color: var(--txt);
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
   cursor: pointer;
   font-size: 0.82rem;
-  font-weight: 500;
-  transition: background 0.15s ease;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
 .collab-link-row button:hover,
 .btn-primary:hover {
-  background: #3730a3;
+  background: rgba(99, 102, 241, 0.25);
 }
 
 .collab-status {
@@ -514,9 +582,7 @@ header {
 
 /* ── Mode client : masquer les contrôles réservés à l'hôte ── */
 body.is-client #clearAll,
-body.is-client #savePalette,
-body.is-client #loadPalette,
-body.is-client #collabBtn,
+body.is-client #moreMenu,
 body.is-client .menu-toggle {
   display: none !important;
 }
@@ -559,10 +625,10 @@ body.is-client .cart {
     position: absolute;
     top: 100%;
     right: 0;
-    background: var(--bg-header);
-    border: 1px solid #374151;
-    border-radius: 0 0 10px 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 0 0 var(--border-r) var(--border-r);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     padding: 0.75rem;
     gap: 0.6rem;
     min-width: 220px;
@@ -579,6 +645,45 @@ body.is-client .cart {
   .controls button {
     width: 100%;
     text-align: left;
+  }
+
+  /* Sur mobile : le more-menu s'intègre dans le flux hamburger */
+  .more-menu {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .more-menu-btn {
+    display: none;
+  }
+
+  .more-dropdown {
+    display: flex !important;
+    position: static !important;
+    flex-direction: column !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    gap: 0.6rem !important;
+  }
+
+  .more-dropdown button {
+    height: 36px !important;
+    padding: 0 14px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
+    background: var(--bg-cart) !important;
+    color: var(--txt) !important;
+    font-weight: 600 !important;
+  }
+
+  .more-dropdown button:hover {
+    background: var(--bg-cart-hover) !important;
+    border-color: var(--txt-muted) !important;
   }
 
   .btn-text {
@@ -643,8 +748,8 @@ body.is-client .cart {
 }
 
 .key-capture-box {
-  background: #1f2937;
-  border: 1px solid #374151;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 2rem 2.5rem;
   text-align: center;
@@ -679,21 +784,23 @@ body.is-client .cart {
 
 .key-capture-actions button {
   padding: 0.4rem 1.1rem;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.82rem;
-  font-weight: 500;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   color: var(--txt);
-  transition: background 0.15s;
+  transition: all 0.15s;
 }
 
 .key-capture-cancel {
-  background: #4b5563;
+  background: var(--bg-cart);
 }
 
 .key-capture-cancel:hover {
-  background: #6b7280;
+  background: var(--bg-cart-hover);
+  border-color: var(--txt-muted);
 }
 
 .key-capture-clear {
@@ -711,80 +818,85 @@ body.is-client .cart {
 
 /* ── Audio Output Button ──────────────────────────────────── */
 #audioOutputBtn {
-  background: #1d4b6e;
+  border-color: var(--border);
+  background: var(--bg-cart);
+  color: var(--txt-muted);
 }
 
 #audioOutputBtn:hover {
-  background: #1e6091;
+  background: var(--bg-cart-hover);
+  color: var(--txt);
+  border-color: var(--txt-muted);
 }
 
 /* ── Audio Output Panel ───────────────────────────────────── */
 .audio-output-panel {
   position: fixed;
-  background: var(--bg-ctx);
-  border: 1px solid #374151;
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
-  padding: 0.35rem 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--border-r);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  padding: 6px 0;
   z-index: 600;
   min-width: 260px;
   max-width: 400px;
   max-height: 320px;
   overflow-y: auto;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-size: 0.85rem;
 }
 
 .aop-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 0.9rem;
-  font-size: 0.82rem;
+  gap: 10px;
+  padding: 9px 14px;
   color: var(--txt);
   cursor: pointer;
-  border-radius: 6px;
-  margin: 2px 4px;
-  transition: background 0.14s;
-  overflow: hidden;
+  transition: background 0.15s;
 }
 
 .aop-item:hover {
-  background: #374151;
+  background: var(--bg-cart-hover);
 }
 
 .aop-item.aop-active {
-  color: #60a5fa;
+  color: var(--accent);
 }
 
 .aop-check {
-  width: 1em;
+  width: 16px;
   flex-shrink: 0;
   text-align: center;
   font-size: 0.85rem;
 }
 
 .aop-label {
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .aop-msg {
-  padding: 0.65rem 1rem;
+  padding: 8px 14px;
   font-size: 0.8rem;
   color: var(--txt-muted);
   line-height: 1.5;
 }
 
 .aop-sep {
-  border-top: 1px solid #374151;
+  height: 1px;
+  background: var(--border);
   margin: 4px 0;
 }
 
 .aop-unlock {
-  color: #93c5fd;
+  color: var(--txt-muted);
+  font-size: 0.82rem;
   font-style: italic;
 }
 
 .aop-unlock:hover {
-  background: #1e3a5f;
+  background: var(--bg-cart-hover);
 }

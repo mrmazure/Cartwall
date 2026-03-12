@@ -1568,6 +1568,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  /* ── More menu dropdown (desktop) ────────────────────── */
+  const moreMenuBtn = document.getElementById('moreMenuBtn');
+  const moreDropdown = document.getElementById('moreDropdown');
+  if (moreMenuBtn && moreDropdown) {
+    moreMenuBtn.onclick = e => {
+      e.stopPropagation();
+      moreDropdown.classList.toggle('open');
+    };
+    document.addEventListener('click', e => {
+      if (!moreDropdown.contains(e.target) && e.target !== moreMenuBtn) {
+        moreDropdown.classList.remove('open');
+      }
+    });
+  }
+
   /* ── Audio output device selection ───────────────────── */
   const audioOutputBtn = document.getElementById('audioOutputBtn');
   if (audioOutputBtn) {
