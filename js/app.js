@@ -142,6 +142,11 @@ function playPauseOrReset(cartEl) {
 
   if (audio.paused) {
     if (!mixMode) stopAllExcept(cartEl);
+    // Apply CUT-IN: jump to cueIn if we're before it (fresh start or post-reset)
+    if (cartEl.cueIn !== null && audio.duration) {
+      const cueInTime = cartEl.cueIn * audio.duration;
+      if (audio.currentTime < cueInTime) audio.currentTime = cueInTime;
+    }
     fadeIn(audio);
     audio.play();
     cartEl.classList.add('playing');
@@ -151,13 +156,13 @@ function playPauseOrReset(cartEl) {
     broadcastCartAction(cartEl.dataset.idx, 'stop');
     fadeOut(audio, FADE_MS, () => {
       audio.pause();
-      audio.currentTime = 0;
+      const dur = audio.duration || 0;
+      audio.currentTime = (cartEl.cueIn !== null && dur) ? cartEl.cueIn * dur : 0;
       cartEl.classList.remove('playing', 'blinking');
       restoreCartLED(cartEl);
       resetProgress(cartEl);
-      // Broadcast final reset state so slave sees 0% and full duration
-      const dur = audio.duration || 0;
-      broadcastState(cartEl.dataset.idx, false, 0, dur ? formatTime(dur) : '', cartEl.style.background || '');
+      // Broadcast final reset state
+      broadcastState(cartEl.dataset.idx, false, 0, cartEl.querySelector('.time').textContent, cartEl.style.background || '');
     });
   } else {
     fadeOut(audio, FADE_MS, () => {
@@ -180,7 +185,8 @@ function stopAllExcept(except) {
       fadeOut(c.audio, FADE_MS, () => {
         c.audio.pause();
         if (resetOn2nd) {
-          c.audio.currentTime = 0;
+          const dur2 = c.audio.duration || 0;
+          c.audio.currentTime = (c.cueIn !== null && dur2) ? c.cueIn * dur2 : 0;
           resetProgress(c);
         }
         c.classList.remove('playing', 'blinking');
@@ -196,11 +202,11 @@ function stopAll() {
     const dur = c.audio.duration || 0;
     fadeOut(c.audio, FADE_MS, () => {
       c.audio.pause();
-      c.audio.currentTime = 0;
+      c.audio.currentTime = (c.cueIn !== null && dur) ? c.cueIn * dur : 0;
       c.classList.remove('playing', 'blinking');
       restoreCartLED(c);
       resetProgress(c);
-      broadcastState(+c.dataset.idx, false, 0, dur ? formatTime(dur) : '', c.style.background || '');
+      broadcastState(+c.dataset.idx, false, 0, c.querySelector('.time').textContent, c.style.background || '');
     });
   });
   broadcastCartAction(-1, 'stopAll');
@@ -220,9 +226,14 @@ function trackProgress(cartEl) {
   function tick() {
     if (audio.paused) return;
     const dur = audio.duration || 0;
-    const rem = dur - audio.currentTime;
     if (dur) {
-      const pct = (audio.currentTime / dur * 100).toFixed(2);
+      const cueInTime  = (cartEl.cueIn  !== null) ? cartEl.cueIn  * dur : 0;
+      const cueOutTime = (cartEl.cueOut !== null) ? cartEl.cueOut * dur : dur;
+      const rangeLen   = Math.max(0.001, cueOutTime - cueInTime);
+      const rem        = Math.max(0, cueOutTime - audio.currentTime);
+      const pct        = Math.max(0, Math.min(100,
+        (audio.currentTime - cueInTime) / rangeLen * 100
+      )).toFixed(2);
       progEl.style.width = pct + '%';
       const timeText = '-' + formatTime(rem);
       timeEl.textContent = timeText;
@@ -276,7 +287,15 @@ function restoreCartLED(cart) {
 function resetProgress(cartEl) {
   cartEl.querySelector('.progress').style.width = '0%';
   const dur = cartEl.audio.duration || 0;
-  cartEl.querySelector('.time').textContent = dur ? formatTime(dur) : '';
+  if (dur) {
+    const inP  = cartEl.cueIn  ?? 0;
+    const outP = cartEl.cueOut ?? 1;
+    const displayDur = (cartEl.cueIn !== null || cartEl.cueOut !== null)
+      ? (outP - inP) * dur : dur;
+    cartEl.querySelector('.time').textContent = formatTime(Math.max(0, displayDur));
+  } else {
+    cartEl.querySelector('.time').textContent = '';
+  }
 }
 
 /* =============================================================
@@ -312,11 +331,23 @@ function assignFile(cartEl, file) {
   if (selectedOutputDeviceId && 'setSinkId' in HTMLAudioElement.prototype) {
     cartEl.audio.setSinkId(selectedOutputDeviceId).catch(() => {});
   }
+  // Invalidate cached waveform and regenerate asynchronously
+  cartEl.waveformData = null;
+  generateWaveform(file).then(wf => {
+    if (cartEl.file === file) cartEl.waveformData = wf;
+  });
   cartEl.audio.onloadedmetadata = () => {
     const name = file.name.replace(/\.[^.]+$/, ''); // strip extension
     cartEl.querySelector('.label').textContent = name;
-    cartEl.querySelector('.time').textContent = formatTime(cartEl.audio.duration);
+    // Show cue-range duration if cue points are already set (e.g. loaded from config)
+    const dur = cartEl.audio.duration;
+    const inP  = cartEl.cueIn  ?? 0;
+    const outP = cartEl.cueOut ?? 1;
+    const displayDur = (cartEl.cueIn !== null || cartEl.cueOut !== null)
+      ? (outP - inP) * dur : dur;
+    cartEl.querySelector('.time').textContent = formatTime(Math.max(0, displayDur));
     broadcastCartMeta(cartEl); // sync label, color, duration to slaves
+    scheduleAutoSave();
   };
 }
 
@@ -330,6 +361,9 @@ function clearCart(cartEl) {
   cartEl.audio.pause();
   cartEl.audio.src = '';
   cartEl.objectURL = null;
+  cartEl.waveformData = null;
+  cartEl.cueIn  = null;
+  cartEl.cueOut = null;
   cartEl.classList.remove('playing', 'blinking', 'loop');
   cartEl.classList.add('empty');
   const idx = +cartEl.dataset.idx;
@@ -337,6 +371,8 @@ function clearCart(cartEl) {
   cartEl.querySelector('.time').textContent = '';
   cartEl.querySelector('.progress').style.width = '0%';
   cartEl.style.background = '';
+  updateCueBadge(cartEl);
+  scheduleAutoSave();
 }
 
 /** Clear all carts after user confirmation. */
@@ -370,6 +406,7 @@ function buildContextMenu(cartEl) {
         cartEl.style.background = hex;
         broadcastCartMeta(cartEl); // sync color change live
         if (cartEl.midiNote) setLaunchpadLED(cartEl.midiNote.note, hex);
+        scheduleAutoSave();
       }
       hideCtxMenu();
     };
@@ -396,6 +433,7 @@ function buildContextMenu(cartEl) {
       if (next !== null && next.trim()) {
         cartEl.querySelector('.label').textContent = next.trim();
         broadcastCartMeta(cartEl); // sync label change live
+        scheduleAutoSave();
       }
     }
     hideCtxMenu();
@@ -420,10 +458,28 @@ function buildContextMenu(cartEl) {
     if (cartEl) {
       cartEl.audio.loop = !cartEl.audio.loop;
       cartEl.classList.toggle('loop', cartEl.audio.loop);
+      scheduleAutoSave();
     }
     hideCtxMenu();
   };
   menu.appendChild(btnLoop);
+
+  // Cue editor — toujours visible, désactivé si aucun fichier sur la cartouche
+  const hasFile = !!(cartEl && cartEl.file);
+  const hasCue  = hasFile && (cartEl.cueIn !== null || cartEl.cueOut !== null);
+  const btnCue  = document.createElement('button');
+  btnCue.innerHTML = hasCue
+    ? '🎯 Cue… <span style="color:var(--accent);font-size:0.78em;font-weight:700">●</span>'
+    : '🎯 Cue…';
+  if (hasCue) btnCue.classList.add('active');
+  if (!hasFile) {
+    btnCue.disabled = true;
+    btnCue.style.opacity = '0.4';
+    btnCue.style.cursor = 'not-allowed';
+  } else {
+    btnCue.onclick = () => { hideCtxMenu(); openCueModal(cartEl); };
+  }
+  menu.appendChild(btnCue);
 
   // ── Separator ────────────────────────────────────────────
   const sep = document.createElement('hr');
@@ -527,6 +583,8 @@ async function saveConfig() {
       loop: c.audio.loop,
       shortcut: c.shortcut || null,
       midiNote: c.midiNote || null,
+      cueIn:  c.cueIn  ?? null,
+      cueOut: c.cueOut ?? null,
       dataUrl,
     });
   }
@@ -567,7 +625,10 @@ function loadConfig(e) {
         el.classList.toggle('loop', !!cfg.loop);
         if (cfg.shortcut) { el.shortcut = cfg.shortcut; } else { delete el.shortcut; }
         if (cfg.midiNote) { el.midiNote = cfg.midiNote; } else { delete el.midiNote; }
+        el.cueIn  = cfg.cueIn  ?? null;
+        el.cueOut = cfg.cueOut ?? null;
         updateShortcutBadge(el);
+        updateCueBadge(el);
       }
       if (data.some(cfg => cfg.midiNote) && !midiAccess) await initMidi();
       updateAllLaunchpadLEDs();
@@ -577,6 +638,97 @@ function loadConfig(e) {
   };
   reader.readAsText(file);
   e.target.value = ''; // reset so the same file can be re-selected
+}
+
+/* =============================================================
+   6b. AUTO-SAVE / AUTO-LOAD (IndexedDB)
+   ============================================================= */
+
+/** Open (or create) the autosave IndexedDB. */
+function openAutosaveDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('cartwall-autosave', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('config');
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+/** Persist current palette to IndexedDB (audio files stored as Blobs). */
+async function autoSave() {
+  const carts = Array.from(document.querySelectorAll('.cart'));
+  const data  = carts.map(c => ({
+    background: c.style.background || '',
+    label:      c.querySelector('.label').textContent,
+    loop:       c.audio.loop,
+    shortcut:   c.shortcut  || null,
+    midiNote:   c.midiNote  || null,
+    cueIn:      c.cueIn     ?? null,
+    cueOut:     c.cueOut    ?? null,
+    file:       c.file      || null,  // File extends Blob — stored natively
+    fileName:   c.file ? c.file.name : null,
+    fileType:   c.file ? c.file.type : null,
+  }));
+  try {
+    const db = await openAutosaveDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('config', 'readwrite');
+      tx.objectStore('config').put(data, 'latest');
+      tx.oncomplete = res;
+      tx.onerror    = e => rej(e.target.error);
+    });
+    db.close();
+  } catch (err) {
+    console.warn('[CartWall] autosave failed:', err);
+  }
+}
+
+/** Debounce multiple rapid changes into a single IndexedDB write. */
+let _autoSaveTimer = null;
+function scheduleAutoSave() {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(autoSave, 600);
+}
+
+/** Restore the last saved palette from IndexedDB (called once at startup). */
+async function autoLoad() {
+  let data;
+  try {
+    const db = await openAutosaveDB();
+    data = await new Promise((res, rej) => {
+      const tx  = db.transaction('config', 'readonly');
+      const req = tx.objectStore('config').get('latest');
+      req.onsuccess = e => res(e.target.result);
+      req.onerror   = e => rej(e.target.error);
+    });
+    db.close();
+  } catch (err) {
+    console.warn('[CartWall] autoload failed:', err);
+    return;
+  }
+  if (!data || !Array.isArray(data) || data.length !== NB_CARTS) return;
+
+  const carts = document.querySelectorAll('.cart');
+  for (let i = 0; i < data.length; i++) {
+    const el  = carts[i];
+    const cfg = data[i];
+    el.style.background = cfg.background || '';
+    el.querySelector('.label').textContent = cfg.label || `Cartouche ${i + 1}`;
+    el.cueIn  = cfg.cueIn  ?? null;
+    el.cueOut = cfg.cueOut ?? null;
+    if (cfg.file) {
+      const f = new File([cfg.file], cfg.fileName || 'audio', { type: cfg.fileType || '' });
+      assignFile(el, f);
+    }
+    el.audio.loop = !!cfg.loop;
+    el.classList.toggle('loop', !!cfg.loop);
+    if (cfg.shortcut) { el.shortcut = cfg.shortcut; } else { delete el.shortcut; }
+    if (cfg.midiNote) { el.midiNote = cfg.midiNote; } else { delete el.midiNote; }
+    updateShortcutBadge(el);
+    updateCueBadge(el);
+  }
+  if (data.some(cfg => cfg.midiNote) && !midiAccess) await initMidi();
+  updateAllLaunchpadLEDs();
 }
 
 /* =============================================================
@@ -998,6 +1150,7 @@ function startKeyCapture(cartEl) {
         shift: e.shiftKey,
       };
       updateShortcutBadge(cartEl);
+      scheduleAutoSave();
     }
     document.removeEventListener('keydown', capture, true);
     overlay.remove();
@@ -1131,6 +1284,7 @@ function onMidiMessage(event) {
     cartEl.midiNote = { channel, note };
     updateShortcutBadge(cartEl);
     setLaunchpadLED(note, cartEl.style.background || '#ffffff');
+    scheduleAutoSave();
     document.querySelector('.key-capture-overlay')?.remove();
     return;
   }
@@ -1308,6 +1462,376 @@ async function startMidiCapture(cartEl) {
     }
   );
   capturingMidi = cartEl;
+}
+
+/* =============================================================
+   10. CUE POINTS / WAVEFORM EDITOR
+   ============================================================= */
+
+/**
+ * Generate normalised waveform samples from a File/Blob.
+ * Returns Float32Array of `samples` values (0-1), or null on error.
+ */
+async function generateWaveform(file, samples = 700) {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    audioCtx.close();
+    const rawData = audioBuffer.getChannelData(0);
+    const blockSize = Math.floor(rawData.length / samples);
+    const data = new Float32Array(samples);
+    for (let i = 0; i < samples; i++) {
+      let sum = 0;
+      for (let j = 0; j < blockSize; j++) sum += Math.abs(rawData[blockSize * i + j]);
+      data[i] = sum / blockSize;
+    }
+    const max = Math.max(...data);
+    return max > 0 ? data.map(v => v / max) : data;
+  } catch (e) {
+    console.warn('[CUE] Waveform generation failed', e);
+    return null;
+  }
+}
+
+/**
+ * Draw waveform + playhead + CUT-IN/CUT-OUT markers on a canvas.
+ */
+function drawCueWaveform(canvas, waveform, progressPct, cueInPct, cueOutPct) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const inX  = (cueInPct  ?? 0) * w;
+  const outX = (cueOutPct ?? 1) * w;
+
+  if (!waveform || !waveform.length) {
+    ctx.fillStyle = '#444';
+    ctx.fillRect(0, h / 2 - 1, w, 2);
+  } else {
+    const barW  = w / waveform.length;
+    const center = h / 2;
+
+    // Outside cut range — muted
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    for (let i = 0; i < waveform.length; i++) {
+      const x = i * barW;
+      if (x < inX || x > outX) {
+        const bh = Math.max(2, waveform[i] * h * 0.78);
+        ctx.fillRect(x, center - bh / 2, Math.max(1, barW - 1), bh);
+      }
+    }
+
+    // Inside cut range — unplayed
+    ctx.fillStyle = 'rgba(255,255,255,0.26)';
+    for (let i = 0; i < waveform.length; i++) {
+      const x = i * barW;
+      if (x >= inX && x <= outX) {
+        const bh = Math.max(2, waveform[i] * h * 0.78);
+        ctx.fillRect(x, center - bh / 2, Math.max(1, barW - 1), bh);
+      }
+    }
+
+    // Played portion (clip to progress)
+    if (progressPct > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, progressPct * w, h);
+      ctx.clip();
+      ctx.fillStyle = '#6366f1';
+      for (let i = 0; i < waveform.length; i++) {
+        const bh = Math.max(2, waveform[i] * h * 0.78);
+        ctx.fillRect(i * barW, center - bh / 2, Math.max(1, barW - 1), bh);
+      }
+      ctx.restore();
+    }
+  }
+
+  // Playhead
+  if (progressPct > 0 && progressPct < 1) {
+    const px = progressPct * w;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(px, 0);
+    ctx.lineTo(px, h);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // CUT-IN marker (green, triangle pointing right)
+  if (cueInPct !== null) {
+    const mx = Math.round(cueInPct * w);
+    ctx.save();
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, h); ctx.stroke();
+    const t = 8;
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.moveTo(mx, 3);
+    ctx.lineTo(mx + t, 3 + t * 0.6);
+    ctx.lineTo(mx, 3 + t * 1.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 9px Inter,system-ui,sans-serif';
+    ctx.fillStyle = '#22c55e';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'left';
+    ctx.fillText('IN', mx + 3, h - 2);
+    ctx.restore();
+  }
+
+  // CUT-OUT marker (red, triangle pointing left)
+  if (cueOutPct !== null) {
+    const mx = Math.round(cueOutPct * w);
+    ctx.save();
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, h); ctx.stroke();
+    const t = 8;
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.moveTo(mx, 3);
+    ctx.lineTo(mx - t, 3 + t * 0.6);
+    ctx.lineTo(mx, 3 + t * 1.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 9px Inter,system-ui,sans-serif';
+    ctx.fillStyle = '#ef4444';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'right';
+    ctx.fillText('OUT', mx - 3, h - 2);
+    ctx.restore();
+  }
+}
+
+/**
+ * Open the Cue editor modal for a cart element.
+ */
+function openCueModal(cartEl) {
+  const dur = cartEl.audio.duration || 0;
+  document.querySelector('.cue-overlay')?.remove();
+
+  let cueIn  = cartEl.cueIn  ?? null;
+  let cueOut = cartEl.cueOut ?? null;
+  let isDraggingIn  = false;
+  let isDraggingOut = false;
+  let cueMode = 'in'; // 'in' | 'out'
+  let animFrame;
+  const HIT_PX = 14;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'cue-overlay';
+  overlay.innerHTML = `
+    <div class="cue-modal">
+      <div class="cue-modal-header">
+        <span class="cue-modal-title">🎯 Cue &mdash; <span class="cue-cart-name">${cartEl.querySelector('.label').textContent}</span></span>
+        <button class="cue-close-btn" title="Fermer">✕</button>
+      </div>
+      <div class="cue-info-row">
+        <div class="cue-point-info cue-in-info">
+          <span class="cue-point-label cue-in-lbl">▶ CUT-IN</span>
+          <span class="cue-point-time cue-in-time">--:--</span>
+        </div>
+        <div class="cue-total-dur">Durée : <strong>${dur ? formatTime(dur) : '--:--'}</strong></div>
+        <div class="cue-point-info cue-out-info">
+          <span class="cue-point-label cue-out-lbl">■ CUT-OUT</span>
+          <span class="cue-point-time cue-out-time">--:--</span>
+        </div>
+      </div>
+      <div class="cue-canvas-wrap">
+        <canvas class="cue-canvas"></canvas>
+        <div class="cue-canvas-loading">⏳ Analyse de la forme d'onde…</div>
+      </div>
+      <div class="cue-controls-row">
+        <div class="cue-mode-group">
+          <span class="cue-mode-lbl">Placer :</span>
+          <button class="cue-mode-btn cue-mode-in-btn active">▶ CUT-IN</button>
+          <button class="cue-mode-btn cue-mode-out-btn">■ CUT-OUT</button>
+        </div>
+        <span class="cue-hint">Clic pour placer · Glisser pour déplacer · Clic droit pour supprimer</span>
+      </div>
+      <div class="cue-footer">
+        <button class="cue-btn cue-btn-clear">Effacer les cues</button>
+        <button class="cue-btn cue-btn-apply">✓ Appliquer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const canvas     = overlay.querySelector('.cue-canvas');
+  const loadingEl  = overlay.querySelector('.cue-canvas-loading');
+  const inTimeEl   = overlay.querySelector('.cue-in-time');
+  const outTimeEl  = overlay.querySelector('.cue-out-time');
+  const modeInBtn  = overlay.querySelector('.cue-mode-in-btn');
+  const modeOutBtn = overlay.querySelector('.cue-mode-out-btn');
+
+  function updateTimes() {
+    inTimeEl.textContent  = (cueIn  !== null && dur) ? formatTime(cueIn  * dur) : '--:--';
+    outTimeEl.textContent = (cueOut !== null && dur) ? formatTime(cueOut * dur) : '--:--';
+    inTimeEl.style.color  = cueIn  !== null ? '#22c55e' : '';
+    outTimeEl.style.color = cueOut !== null ? '#ef4444' : '';
+  }
+
+  function fitCanvas() {
+    const w = canvas.offsetWidth, h = canvas.offsetHeight;
+    if (w > 0 && canvas.width  !== w) canvas.width  = w;
+    if (h > 0 && canvas.height !== h) canvas.height = h;
+  }
+
+  function redraw() {
+    fitCanvas();
+    drawCueWaveform(canvas, cartEl.waveformData,
+      dur ? (cartEl.audio.currentTime / dur) : 0,
+      cueIn, cueOut);
+  }
+
+  function getHit(evt) {
+    const r = canvas.getBoundingClientRect();
+    const x = evt.clientX - r.left;
+    const W = r.width;
+    const di   = cueIn  !== null ? Math.abs(x - cueIn  * W) : Infinity;
+    const dout = cueOut !== null ? Math.abs(x - cueOut * W) : Infinity;
+    if (di   <= HIT_PX && di   <= dout) return 'in';
+    if (dout <= HIT_PX)                 return 'out';
+    return null;
+  }
+
+  function setMode(m) {
+    cueMode = m;
+    modeInBtn.classList.toggle('active',  m === 'in');
+    modeOutBtn.classList.toggle('active', m === 'out');
+  }
+  modeInBtn.onclick  = () => setMode('in');
+  modeOutBtn.onclick = () => setMode('out');
+
+  canvas.addEventListener('mousemove', evt => {
+    if (isDraggingIn || isDraggingOut) return;
+    canvas.style.cursor = getHit(evt) ? 'ew-resize' : 'crosshair';
+  });
+
+  canvas.addEventListener('click', evt => {
+    if (isDraggingIn || isDraggingOut) return;
+    if (getHit(evt)) return;
+    const r   = canvas.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (evt.clientX - r.left) / r.width));
+    if (cueMode === 'in') {
+      cueIn = pct;
+      if (cueOut !== null && cueOut <= cueIn + 0.001) cueOut = null;
+    } else {
+      cueOut = pct;
+      if (cueIn !== null && cueIn >= cueOut - 0.001) cueIn = null;
+    }
+    updateTimes(); redraw();
+  });
+
+  canvas.addEventListener('contextmenu', evt => {
+    evt.preventDefault();
+    const hit = getHit(evt);
+    if (hit === 'in')  { cueIn  = null; updateTimes(); redraw(); }
+    if (hit === 'out') { cueOut = null; updateTimes(); redraw(); }
+  });
+
+  canvas.addEventListener('pointerdown', evt => {
+    const hit = getHit(evt);
+    if (!hit) return;
+    canvas.setPointerCapture(evt.pointerId);
+    isDraggingIn  = hit === 'in';
+    isDraggingOut = hit === 'out';
+    canvas.style.cursor = 'ew-resize';
+    evt.preventDefault();
+  });
+
+  canvas.addEventListener('pointermove', evt => {
+    if (!isDraggingIn && !isDraggingOut) return;
+    const r   = canvas.getBoundingClientRect();
+    let pct   = Math.max(0, Math.min(1, (evt.clientX - r.left) / r.width));
+    if (isDraggingIn) {
+      if (cueOut !== null) pct = Math.min(pct, cueOut - 0.001);
+      cueIn = pct;
+    } else {
+      if (cueIn !== null) pct = Math.max(pct, cueIn + 0.001);
+      cueOut = pct;
+    }
+    updateTimes(); redraw();
+    evt.preventDefault();
+  });
+
+  canvas.addEventListener('pointerup',     () => { isDraggingIn = false; isDraggingOut = false; canvas.style.cursor = 'crosshair'; });
+  canvas.addEventListener('pointercancel', () => { isDraggingIn = false; isDraggingOut = false; });
+
+  const resizeObs = new ResizeObserver(() => redraw());
+
+  function closeModal() {
+    cancelAnimationFrame(animFrame);
+    resizeObs.disconnect();
+    overlay.remove();
+  }
+
+  overlay.querySelector('.cue-close-btn').onclick = closeModal;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+  overlay.querySelector('.cue-btn-clear').onclick = () => {
+    cueIn = null; cueOut = null;
+    updateTimes(); redraw();
+  };
+
+  overlay.querySelector('.cue-btn-apply').onclick = () => {
+    cartEl.cueIn  = cueIn;
+    cartEl.cueOut = cueOut;
+    scheduleAutoSave();
+    if (dur) {
+      const inP  = cueIn  ?? 0;
+      const outP = cueOut ?? 1;
+      const displayDur = (cueIn !== null || cueOut !== null) ? (outP - inP) * dur : dur;
+      cartEl.querySelector('.time').textContent = formatTime(Math.max(0, displayDur));
+    }
+    updateCueBadge(cartEl);
+    closeModal();
+  };
+
+  // Load or generate waveform
+  if (cartEl.waveformData) {
+    loadingEl.style.display = 'none';
+  } else if (cartEl.file) {
+    generateWaveform(cartEl.file).then(wf => {
+      if (cartEl.file) cartEl.waveformData = wf; // guard against cart cleared
+      if (overlay.isConnected) { loadingEl.style.display = 'none'; redraw(); }
+    });
+  } else {
+    loadingEl.style.display = 'none';
+  }
+
+  updateTimes();
+
+  // Animate playhead + start ResizeObserver
+  function animate() { redraw(); animFrame = requestAnimationFrame(animate); }
+  requestAnimationFrame(() => {
+    fitCanvas();
+    resizeObs.observe(canvas);
+    animate();
+  });
+}
+
+/**
+ * Show/hide the CUE badge on a cart (indicates active cue points).
+ */
+function updateCueBadge(cartEl) {
+  let badge = cartEl.querySelector('.cue-badge');
+  const hasCue = cartEl.cueIn !== null || cartEl.cueOut !== null;
+  if (hasCue) {
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'cue-badge';
+      cartEl.appendChild(badge);
+    }
+    badge.textContent = 'CUE';
+  } else if (badge) {
+    badge.remove();
+  }
 }
 
 /* =============================================================
@@ -1497,13 +2021,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Audio element
     cart.audio = new Audio();
     cart.audio.preload = 'auto';
+
+    // Precise CUT-OUT enforcement via timeupdate (fires even in background)
+    cart.audio.addEventListener('timeupdate', () => {
+      if (cart.audio.paused || cart.cueOut === null) return;
+      const dur = cart.audio.duration;
+      if (!dur) return;
+      if (cart.audio.currentTime >= cart.cueOut * dur) {
+        cart.audio.pause();
+        cart.audio.currentTime = (cart.cueIn !== null) ? cart.cueIn * dur : 0;
+        cart.classList.remove('playing', 'blinking');
+        restoreCartLED(cart);
+        resetProgress(cart);
+        broadcastState(i, false, 0, cart.querySelector('.time').textContent, cart.style.background || '');
+      }
+    });
+
     cart.audio.addEventListener('ended', () => {
       cart.classList.remove('playing', 'blinking');
       restoreCartLED(cart);
       resetProgress(cart);
-      const dur = cart.audio.duration || 0;
-      const timeText = dur ? formatTime(dur) : '';
-      broadcastState(i, false, 0, timeText, cart.style.background || '');
+      broadcastState(i, false, 0, cart.querySelector('.time').textContent, cart.style.background || '');
     });
 
     /* Click */
@@ -1661,5 +2199,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ── Initial layout & collab auto-join ───────────────── */
   resizeCarts();
+  autoLoad(); // Restore last palette from IndexedDB
   initCollaboration();
 });

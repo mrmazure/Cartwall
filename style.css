@@ -900,3 +900,303 @@ body.is-client .cart {
 .aop-unlock:hover {
   background: var(--bg-cart-hover);
 }
+
+/* ── CUE badge on cart ────────────────────────────────────── */
+.cue-badge {
+  position: absolute;
+  bottom: 10px;
+  right: 6px;
+  background: rgba(99, 102, 241, 0.18);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  z-index: 1;
+  text-transform: uppercase;
+}
+
+/* ── Cue Modal Overlay ────────────────────────────────────── */
+.cue-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500;
+  padding: 1rem;
+}
+
+.cue-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.4rem 1.5rem 1.2rem;
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+}
+
+/* Header */
+.cue-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cue-modal-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.cue-cart-name {
+  color: var(--txt-muted);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cue-close-btn {
+  background: var(--bg-cart);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--txt);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.cue-close-btn:hover {
+  background: var(--bg-cart-hover);
+  border-color: var(--txt-muted);
+}
+
+/* Info row (CUT-IN time | Total | CUT-OUT time) */
+.cue-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-page);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+}
+
+.cue-point-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.cue-in-info  { align-items: flex-start; }
+.cue-out-info { align-items: flex-end; }
+
+.cue-point-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--txt-muted);
+}
+
+.cue-in-lbl  { color: #22c55e; }
+.cue-out-lbl { color: #ef4444; }
+
+.cue-point-time {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--txt-muted);
+  transition: color 0.2s;
+}
+
+.cue-total-dur {
+  font-size: 0.78rem;
+  color: var(--txt-muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Waveform canvas */
+.cue-canvas-wrap {
+  position: relative;
+  height: 96px;
+  background: var(--bg-cart);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.cue-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+.cue-canvas-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--txt-muted);
+  font-size: 0.82rem;
+  pointer-events: none;
+  background: var(--bg-cart);
+}
+
+/* Controls row */
+.cue-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cue-mode-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.cue-mode-lbl {
+  font-size: 0.78rem;
+  color: var(--txt-muted);
+  white-space: nowrap;
+}
+
+.cue-mode-btn {
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  transition: all 0.15s;
+  border: 1px solid var(--border);
+  background: var(--bg-cart);
+  color: var(--txt-muted);
+}
+
+.cue-mode-btn:hover {
+  background: var(--bg-cart-hover);
+  color: var(--txt);
+}
+
+.cue-mode-in-btn.active {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.cue-mode-out-btn.active {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.cue-hint {
+  font-size: 0.7rem;
+  color: var(--txt-empty);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Footer */
+.cue-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.cue-btn {
+  padding: 0.42rem 1.1rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  transition: all 0.15s;
+}
+
+.cue-btn-clear {
+  background: var(--bg-cart);
+  border: 1px solid var(--border);
+  color: var(--txt-muted);
+}
+
+.cue-btn-clear:hover {
+  background: var(--bg-cart-hover);
+  border-color: var(--txt-muted);
+  color: var(--txt);
+}
+
+.cue-btn-apply {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.cue-btn-apply:hover {
+  background: rgba(99, 102, 241, 0.28);
+}
+
+/* ── Responsive – Cue Modal ───────────────────────────────── */
+@media (max-width: 600px) {
+  .cue-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .cue-modal {
+    border-radius: 14px 14px 0 0;
+    max-width: 100%;
+    padding: 1.2rem 1rem 1rem;
+    max-height: 75vh;
+    overflow-y: auto;
+  }
+
+  .cue-hint {
+    display: none;
+  }
+
+  .cue-canvas-wrap {
+    height: 76px;
+  }
+
+  .cue-info-row {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .cue-point-time {
+    font-size: 0.95rem;
+  }
+
+  .cue-controls-row {
+    gap: 0.5rem;
+  }
+}
