@@ -1713,21 +1713,6 @@ function openCueModal(cartEl) {
     canvas.style.cursor = getHit(evt) ? 'ew-resize' : 'crosshair';
   });
 
-  canvas.addEventListener('click', evt => {
-    if (isDraggingIn || isDraggingOut) return;
-    if (getHit(evt)) return;
-    const r   = canvas.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (evt.clientX - r.left) / r.width));
-    if (cueMode === 'in') {
-      cueIn = pct;
-      if (cueOut !== null && cueOut <= cueIn + 0.001) cueOut = null;
-    } else {
-      cueOut = pct;
-      if (cueIn !== null && cueIn >= cueOut - 0.001) cueIn = null;
-    }
-    updateTimes(); redraw();
-  });
-
   canvas.addEventListener('contextmenu', evt => {
     evt.preventDefault();
     const hit = getHit(evt);
@@ -1735,14 +1720,19 @@ function openCueModal(cartEl) {
     if (hit === 'out') { cueOut = null; updateTimes(); redraw(); }
   });
 
+  // Pointer-based placement + drag (works reliably at canvas edges on mobile)
+  let _ptrDownX = null;
+
   canvas.addEventListener('pointerdown', evt => {
+    canvas.setPointerCapture(evt.pointerId); // always capture → pointerup fires even at edges
+    evt.preventDefault();                    // prevent synthesized click & browser gestures
+    _ptrDownX = evt.clientX;
     const hit = getHit(evt);
-    if (!hit) return;
-    canvas.setPointerCapture(evt.pointerId);
-    isDraggingIn  = hit === 'in';
-    isDraggingOut = hit === 'out';
-    canvas.style.cursor = 'ew-resize';
-    evt.preventDefault();
+    if (hit) {
+      isDraggingIn  = hit === 'in';
+      isDraggingOut = hit === 'out';
+      canvas.style.cursor = 'ew-resize';
+    }
   });
 
   canvas.addEventListener('pointermove', evt => {
@@ -1760,8 +1750,30 @@ function openCueModal(cartEl) {
     evt.preventDefault();
   });
 
-  canvas.addEventListener('pointerup',     () => { isDraggingIn = false; isDraggingOut = false; canvas.style.cursor = 'crosshair'; });
-  canvas.addEventListener('pointercancel', () => { isDraggingIn = false; isDraggingOut = false; });
+  canvas.addEventListener('pointerup', evt => {
+    const wasDragging = isDraggingIn || isDraggingOut;
+    isDraggingIn = false; isDraggingOut = false;
+    canvas.style.cursor = 'crosshair';
+    // Tap (not drag) → place the cue at the tapped position
+    if (!wasDragging && _ptrDownX !== null && Math.abs(evt.clientX - _ptrDownX) < 8) {
+      const r = canvas.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (evt.clientX - r.left) / r.width));
+      if (cueMode === 'in') {
+        cueIn = pct;
+        if (cueOut !== null && cueOut <= cueIn + 0.001) cueOut = null;
+      } else {
+        cueOut = pct;
+        if (cueIn !== null && cueIn >= cueOut - 0.001) cueIn = null;
+      }
+      updateTimes(); redraw();
+    }
+    _ptrDownX = null;
+  });
+
+  canvas.addEventListener('pointercancel', () => {
+    isDraggingIn = false; isDraggingOut = false;
+    _ptrDownX = null;
+  });
 
   const resizeObs = new ResizeObserver(() => redraw());
 
