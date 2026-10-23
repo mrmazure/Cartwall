@@ -114,8 +114,8 @@ function getAudioCtx() {
  */
 function _glBounds(cartEl) {
   const dur = cartEl.audioBuffer ? cartEl.audioBuffer.duration : (cartEl.audio.duration || 0);
-  const ls  = (cartEl.cueIn  !== null) ? cartEl.cueIn  * dur : 0;
-  const le  = (cartEl.cueOut !== null) ? cartEl.cueOut * dur : dur;
+  const ls  = (cartEl.cueIn  ?? 0) * dur;
+  const le  = (cartEl.cueOut ?? 1) * dur;
   return { ls, le, ll: Math.max(0.001, le - ls) };
 }
 
@@ -407,8 +407,8 @@ function trackProgress(cartEl) {
       : getCartDuration(cartEl);
     const currentTime = cartEl._glActive ? glCurrentTime(cartEl) : audio.currentTime;
     if (dur) {
-      const cueInTime  = (cartEl.cueIn  !== null) ? cartEl.cueIn  * dur : 0;
-      const cueOutTime = (cartEl.cueOut !== null) ? cartEl.cueOut * dur : dur;
+      const cueInTime  = (cartEl.cueIn  ?? 0) * dur;
+      const cueOutTime = (cartEl.cueOut ?? 1) * dur;
       const rangeLen   = Math.max(0.001, cueOutTime - cueInTime);
       const rem        = Math.max(0, cueOutTime - currentTime);
       const pct        = Math.max(0, Math.min(100,
@@ -2306,6 +2306,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Per-cart user volume (0-1)
     cart.userVolume = 1;
+
+    // Points de cue (fractions 0-1, null = non défini). Initialisés ici pour
+    // ne jamais valoir `undefined`, ce qui faussait les calculs (NaN → --:--).
+    cart.cueIn  = null;
+    cart.cueOut = null;
 
     // Audio element
     cart.audio = new Audio();
